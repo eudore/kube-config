@@ -1,0 +1,103 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: grafana-volume
+  namespace: kube-public
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: kube-public
+  labels:
+    k8s-app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: grafana
+  template:
+    metadata:
+      labels:
+        k8s-app: grafana
+    spec:
+      enableServiceLinks: false
+      containers:
+      - image: docker.io/grafana/grafana:8.2.5
+        name: grafana
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits: 
+            cpu: 500m
+            memory: 1Gi
+        env:
+        - name: GF_AUTH_BASIC_ENABLED
+          value: "true"
+        - name: GF_AUTH_ANONYMOUS_ENABLED
+          value: "true"
+        readinessProbe:
+          httpGet:
+            path: /login
+            port: 3000
+        securityContext:
+          runAsUser: 472
+          runAsGroup: 472
+        volumeMounts:
+        - name: grafana-volume
+          mountPath: /var/lib/grafana
+      volumes:
+      - name: grafana-volume
+        persistentVolumeClaim:
+          claimName: grafana-volume
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: kube-public
+  labels:
+    k8s-app: grafana
+  annotations:
+    prometheus.io/component: "true"
+    prometheus.io/port: "3000"
+    prometheus.io/probe: "true"
+    prometheus.io/http-path: "/healthz"
+spec:
+  type: ClusterIP
+  selector:
+    k8s-app: grafana
+  ports:
+  - name: http
+    port: 3000
+    protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+   name: grafana
+   namespace: kube-public
+   annotations:
+    prometheus.io/probe: "true"
+    prometheus.io/path: "/healthz"
+spec:
+  ingressClassName: "nginx"
+  rules:
+  - host: grafana.local.eudore.cn
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000

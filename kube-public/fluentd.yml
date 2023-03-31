@@ -1,0 +1,199 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentd
+  namespace: kube-public
+data:
+  version: "kubernetes-1.26.3 containerd-1.6.19 fluentd-1.15.3"
+  fluent.conf: |
+    <source>
+      @type tail
+      path /var/log/pods/*_ingress-nginx-controller-*/*/*.log,/var/log/pods/eudore_*/*/*.log,/var/log/pods/endpoint_*/*/*.log
+      pos_file /var/log/fluentd-eudore.pos
+      read_from_head true
+      tag *
+      <parse>
+        @type regexp
+        expression /^[^ ]+ (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<message>.*)$/
+      </parse>
+    </source>
+
+    <filter var.log.pods.*.*.*.log>
+      @type parser
+      key_name message
+      reserve_time true
+      reserve_data false
+      <parse>
+        @type multi_format
+        <pattern>
+          format json
+        </pattern>
+        <pattern>
+          format none
+        </pattern>
+      </parse>
+    </filter>
+    <filter var.log.pods.eudore_*.*.*.log>
+      @type kubernetes_metadata
+      skip_labels
+      skip_container_metadata
+      skip_namespace_metadata
+      skip_master_url
+    </filter>
+
+    <match var.log.pods.*_ingress-nginx-controller-*.*.*.log>
+      @type rewrite_tag_filter
+      <rule>
+        key message
+        pattern .+
+        tag kube-public-ingress
+      </rule>
+      <rule>
+        key http
+        pattern .*
+        invert false
+        tag nginx-ingress
+      </rule>
+    </match>
+    <match var.log.pods.*.*.*.log>
+      @type rewrite_tag_filter
+      <rule>
+        key $['kubernetes']['pod_name']
+        pattern ^(.*)$
+        tag $1
+      </rule>
+      <rule>
+        key message
+        pattern .*
+        tag eudore-undefined
+      </rule>
+    </match>
+
+    <match *>
+      @type elasticsearch
+      host "#{ENV['FLUENT_ELASTICSEARCH_HOST']}"
+      port "#{ENV['FLUENT_ELASTICSEARCH_PORT']}"
+      suppress_type_name "#{ENV['FLUENT_ELASTICSEARCH_SUPPRESS_TYPE_NAME'] || 'true'}"
+      reload_connections false
+      reconnect_on_error true
+      reload_on_failure true
+      logstash_format true
+      logstash_prefix ${tag}
+      <buffer>
+        @type file
+        path /var/log/fluentd.buf
+        flush_thread_count 8
+        flush_interval 5s
+        chunk_limit_size 2M
+        queue_limit_length 32
+        retry_max_interval 30
+        retry_forever true
+      </buffer>
+    </match>
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluentd
+  namespace: kube-public
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluentd
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: fluentd
+roleRef:
+  kind: ClusterRole
+  name: fluentd
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  name: fluentd
+  namespace: kube-public
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluentd
+  namespace: kube-public
+  labels:
+    k8s-app: fluentd
+spec:
+  selector:
+    matchLabels:
+      k8s-app: fluentd
+  template:
+    metadata:
+      labels:
+        k8s-app: fluentd
+    spec:
+      serviceAccountName: fluentd
+      restartPolicy: Always
+      imagePullSecrets:
+      - name: registry-aliyun
+      containers:
+      - name: fluentd
+        image: docker.io/fluent/fluentd-kubernetes-daemonset:v1.15-debian-elasticsearch7-1
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: K8S_NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: FLUENT_ELASTICSEARCH_HOST
+          value: elasticsearch
+        - name: FLUENT_ELASTICSEARCH_PORT
+          value: "9200"
+        - name: FLUENT_ELASTICSEARCH_SCHEME
+          value: http
+        - name: FLUENT_ELASTICSEARCH_SSL_VERIFY
+          value: "true"
+        - name: FLUENT_ELASTICSEARCH_SSL_VERSION
+          value: TLSv1_2
+        - name: FLUENT_ELASTICSEARCH_USER
+          value: elastic
+        - name: FLUENT_ELASTICSEARCH_PASSWORD
+          value: elastic
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 512Mi
+        volumeMounts:
+        - mountPath: /var/log
+          name: varlog
+        - mountPath: /var/lib/docker/containers
+          name: varlibdockercontainers
+          readOnly: true
+        - mountPath: /fluentd/etc
+          name: fluentd-config
+      volumes:
+      - hostPath:
+          path: /var/log
+          type: ""
+        name: varlog
+      - hostPath:
+          path: /var/lib/docker/containers
+          type: ""
+        name: varlibdockercontainers
+      - configMap:
+          defaultMode: 420
+          name: fluentd
+        name: fluentd-config

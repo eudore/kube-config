@@ -1,0 +1,4 @@
+namespace: eudore
+resources:
+- ../common
+- namespace.yml

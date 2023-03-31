@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger-collector
+  namespace: kube-public
+  labels:
+    k8s-app: jaeger-collector
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      k8s-app: jaeger-collector
+  template:
+    metadata:
+      labels:
+        k8s-app: jaeger-collector
+    spec:
+      containers:
+      - image: docker.io/jaegertracing/jaeger-collector:1.39.0
+        imagePullPolicy: IfNotPresent
+        name: jaeger-collector
+        args: ["--config-file=/conf/collector.yaml"]
+        ports:
+        - containerPort: 14250
+          protocol: TCP
+        - containerPort: 14268
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 20m
+            memory: 64Mi
+        readinessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: "/"
+            port: 14269
+        volumeMounts:
+        - name: jaeger-configuration-volume
+          mountPath: /conf
+        env:
+        - name: SPAN_STORAGE_TYPE
+          valueFrom:
+            configMapKeyRef:
+              name: jaeger-configuration
+              key: span-storage-type
+      volumes:
+      - configMap:
+          name: jaeger-configuration
+          items:
+            - key: collector
+              path: collector.yaml
+        name: jaeger-configuration-volume
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-collector
+  namespace: kube-public
+  labels:
+    k8s-app: jaeger-collector
+  annotations:
+    prometheus.io/component: "true"
+    prometheus.io/port: "14269"
+    prometheus.io/probe: "true"
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    k8s-app: jaeger-collector
+  ports:
+  - name: grpc
+    port: 14250
+    protocol: TCP
+    targetPort: 14250
+  - name: jaeger-collector-http
+    port: 14268
+    protocol: TCP
+    targetPort: 14268
+  - name: http
+    port: 14269
+    protocol: TCP
+    targetPort: 14269

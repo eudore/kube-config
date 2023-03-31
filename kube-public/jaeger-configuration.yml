@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jaeger-configuration
+  namespace: kube-public
+  labels:
+    app: jaeger
+data:
+  span-storage-type: elasticsearch
+  collector: |
+    es:
+      server-urls: http://elasticsearch:9200
+      username: elastic
+      password: elastic
+      version: 7
+  query: |
+    es:
+      server-urls: http://elasticsearch:9200
+      username: elastic
+      password: elastic
+      version: 7
+    prometheus:
+      server-url: http://prometheus-server:9090
+  agent: |
+    reporter:
+      grpc:
+        host-port: "jaeger-collector:14250"
+  ui: |
+    {
+      "archiveEnabled": true,
+      "dependencies": {
+        "dagMaxNumServices": 200,
+        "menuEnabled": true
+      },
+      "deepDependencies": {
+        "menuEnabled": true
+      },
+      "monitor": {
+        "menuEnabled": true,
+        "docsLink": "https://www.jaegertracing.io/docs/latest/spm/"
+      },
+      "qualityMetrics": {
+        "menuEnabled": false,
+        "menuLabel": "Trace Quality"
+      },
+      "search": {
+        "maxLookback": {
+          "label": "2 Days",
+          "value": "2d"
+        },
+        "maxLimit": 1500
+      },
+      "linkPatterns": [
+        {
+          "type": "process",
+          "key": "jaeger.version",
+          "url": "https://github.com/jaegertracing/jaeger-client-java/releases/tag/#{jaeger.version}",
+          "text": "Information about Jaeger release #{jaeger.version}"
+        }
+      ]
+    }

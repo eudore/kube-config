@@ -1,0 +1,97 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: code-server
+  namespace: kube-public
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-server
+  namespace: kube-public
+  labels:
+    app: code-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: code-server
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      name: code-server
+      labels:
+        app: code-server
+    spec:
+      containers:
+      - image: docker.io/codercom/code-server:latest
+        name: code-server
+        env:
+        - name: DOCKER_USER
+          value: root
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits: 
+            cpu: 1000m
+            memory: 2Gi
+        volumeMounts:
+        - mountPath: /home/coder/project
+          name: code-server
+      securityContext:
+        runAsUser: 0
+      volumes:
+      - name: code-server
+        persistentVolumeClaim:
+          claimName: code-server
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: code-server
+  namespace: kube-public
+  labels:
+    app: code-server
+spec:
+  type: ClusterIP
+  ports:
+  - name: tcp
+    protocol: TCP
+    port: 8080
+  selector:
+    app: code-server
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: code-server
+  namespace: kube-public
+  labels:
+    app: code-server
+  annotations:
+    prometheus.io/probe: "true"
+    prometheus.io/path: "/healthz"
+spec:
+  ingressClassName: "nginx"
+  rules:
+  - host: code.local.eudore.cn
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: code-server
+            port:
+              number: 8080

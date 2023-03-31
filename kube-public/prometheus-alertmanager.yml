@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-alertmanager
+  namespace: kube-public
+  labels:
+    k8s-app: prometheus-alertmanager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: prometheus-alertmanager
+  template:
+    metadata:
+      name: prometheus-alertmanager
+      labels:
+        k8s-app: prometheus-alertmanager
+    spec:
+      enableServiceLinks: false
+      containers:
+      - name: prometheus-alertmanager
+        image: docker.io/prom/alertmanager:latest
+        args:
+          - "--config.file=/etc/alertmanager/alertmanager.yml"
+          - "--storage.path=/alertmanager"
+        ports:
+        - containerPort: 9093
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/alertmanager
+        - name: templates-volume
+          mountPath: /etc/alertmanager/templates
+        - name: alertmanager
+          mountPath: /alertmanager
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 20m
+            memory: 64Mi
+      volumes:
+      - name: config-volume
+        configMap:
+          name: prometheus-configuration
+      - name: templates-volume
+        emptyDir: {}
+      - name: alertmanager
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-alertmanager
+  namespace: kube-public
+  labels:
+    k8s-app: prometheus-alertmanager
+  annotations:
+    prometheus.io/component: "true"
+    prometheus.io/probe: "true"
+    prometheus.io/port: "9093"
+spec:
+  type: ClusterIP  
+  clusterIP: None
+  selector:
+    k8s-app: prometheus-alertmanager
+  ports:
+  - port: 9093
+    name: http
+    targetPort: 9093

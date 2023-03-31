@@ -1,0 +1,108 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: godoc
+  namespace: kube-public
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: godoc
+  namespace: kube-public
+  labels:
+    app: godoc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: godoc
+  template:
+    metadata:
+      name: godoc
+      labels:
+        app: godoc
+    spec:
+      containers:
+      - image: registry.cn-shanghai.aliyuncs.com/eudore/godoc:1.20
+        imagePullPolicy: IfNotPresent
+        name: godoc
+        args: ["godoc", "-v", "-http=:80", "-play=true", "-play_server=http://goplay.kube-public.svc:8080"]
+        ports:
+        - containerPort: 80
+        env:
+        - name: GOROOT
+          value: /root/go/goroot
+        - name: GOPATH
+          value: /root/go/gopath
+        - name: GO111MODULE
+          value: "on"
+        - name: ENV_GODOC_PASS
+          value: password
+        resources:
+          limits:
+            cpu: 100m
+            memory: 256Mi
+          requests:
+            cpu: 20m
+            memory: 64Mi
+        volumeMounts:
+        - mountPath: /root/go
+          name: data
+          readOnly: false
+      imagePullSecrets:
+      - name: registry-aliyun
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: godoc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: godoc
+  namespace: kube-public
+  labels:
+    app: godoc
+  annotations:
+    prometheus.io/component: "true"
+    prometheus.io/probe: "true"
+    prometheus.io/http-path: "/healthz"
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+  selector:
+    app: godoc
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: godoc
+  namespace: kube-public
+  labels:
+    app: godoc
+  annotations:
+    prometheus.io/probe: "true"
+    prometheus.io/path: "/healthz"
+    prometheus.io/module: "success"
+spec:
+  ingressClassName: "nginx"
+  rules:
+  - host: godoc.local.eudore.cn
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: godoc
+            port:
+              number: 80

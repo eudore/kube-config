@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elastic-exporter
+  namespace: kube-public
+  labels:
+    k8s-app: elastic-exporter
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      k8s-app: elastic-exporter
+  template:
+    metadata:
+      labels:
+        k8s-app: elastic-exporter
+    spec:
+      restartPolicy: Always
+      containers:
+      - name: elastic-exporter
+        image: quay.io/prometheuscommunity/elasticsearch-exporter:latest
+        command:
+          - /bin/elasticsearch_exporter
+          - --es.uri=http://elasticsearch:9200
+          - --es.all
+        ports:
+        - containerPort: 9114
+          name: http
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 9114
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 9114
+          initialDelaySeconds: 10
+          timeoutSeconds: 10
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 25m
+            memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elastic-exporter
+  namespace: kube-public
+  labels:
+    k8s-app: elastic-exporter
+  annotations:
+    prometheus.io/component: "true"
+    prometheus.io/port: "9114"
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    k8s-app: elastic-exporter
+  ports:
+  - name: http
+    port: 9114
+    protocol: TCP
+    targetPort: 9114

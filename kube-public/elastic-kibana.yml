@@ -1,0 +1,159 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kibana
+  namespace: kube-public
+  labels:
+    app: kibana
+data:
+  kibana.yml: |
+    logging.dest: stdout
+    logging.verbose: false
+    #logging.silent: false
+    #logging.quiet: false
+
+    #pid.file: /var/run/kibana.pid
+    #ops.interval: 5000
+    #i18n.defaultLocale: "en"
+
+    server.port: 5601
+    server.host: "0.0.0.0"
+    #server.name: "kibana"
+
+    #elasticsearch.preserveHost: true
+    #elasticsearch.username: "user"
+    #elasticsearch.password: "pass"
+    #elasticsearch.ssl.certificate: /path/to/your/client.crt
+    #elasticsearch.ssl.key: /path/to/your/client.key
+    #elasticsearch.ssl.certificateAuthorities: [ "/path/to/your/CA.pem" ]
+    #elasticsearch.ssl.verificationMode: full
+    #elasticsearch.pingTimeout: 1500
+    #elasticsearch.requestTimeout: 30000
+    #elasticsearch.requestHeadersWhitelist: [ authorization ]
+    #elasticsearch.customHeaders: {}
+    #elasticsearch.shardTimeout: 0
+    #elasticsearch.startupTimeout: 5000
+
+    kibana.index: ".kibana"
+    kibana.defaultAppId: "discover"
+
+    #server.ssl.enabled: false
+    #server.ssl.certificate: /path/to/your/server.crt
+    #server.ssl.key: /path/to/your/server.key
+
+    xpack.security.enabled: false
+    #xpack.security.encryptionKey: "something_at_least_32_characters"
+    #xpack.security.sessionTimeout: 600000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: kube-public
+  labels:
+    app: kibana
+spec:
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      restartPolicy: Always
+      initContainers:
+      - name: sysctl
+        image: busybox
+        imagePullPolicy: IfNotPresent
+        command: ["sysctl", "-w", "vm.max_map_count=262144"]
+        securityContext:
+          privileged: true
+      containers:
+      - name: kibana
+        imagePullPolicy: IfNotPresent
+        image: docker.elastic.co/kibana/kibana:7.17.9
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits: 
+            cpu: 500m
+            memory: 1Gi
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: SERVER_NAME
+          value: "kibana"
+        - name: ELASTICSEARCH_HOSTS
+          value: "http://elasticsearch.kube-public:9200"
+        - name: BROWSERSLIST_IGNORE_OLD_DATA
+          value: "true"
+        ports:
+        - containerPort: 5601
+          name: http
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 10
+          tcpSocket:
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        volumeMounts:
+        - name: config
+          mountPath: /usr/share/kibana/config/kibana.yml
+          subPath: kibana.yml
+      volumes:
+      - name: config
+        configMap:
+          name: kibana
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: kube-public
+  labels:
+    app: kibana
+  annotations:
+    prometheus.io/port: "5601"
+    prometheus.io/probe: "true"
+    prometheus.io/http-path: "/api/status"
+spec:
+  type: ClusterIP
+  selector:
+    app: kibana
+  ports:
+  - port: 80
+    targetPort: 5601
+    protocol: TCP
+    name: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+   name: kibana
+   namespace: kube-public
+   annotations:
+    prometheus.io/probe: "true"
+    prometheus.io/path: "/api/status"
+spec:
+  ingressClassName: "nginx"
+  rules:
+  - host: kibana.local.eudore.cn
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: kibana
+            port:
+              number: 5601

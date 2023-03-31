@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: jaeger-agent
+  namespace: kube-public
+  labels:
+    k8s-app: jaeger-agent
+spec:
+  selector:
+    matchLabels:
+      k8s-app: jaeger-agent
+  template:
+    metadata:
+      labels:
+        k8s-app: jaeger-agent
+    spec:
+      containers:
+      - name: jaeger-agent
+        image: docker.io/jaegertracing/jaeger-agent:1.39.0
+        imagePullPolicy: IfNotPresent
+        args: ["--config-file=/conf/agent.yaml"]
+        volumeMounts:
+        - name: jaeger-configuration-volume
+          mountPath: /conf
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 20m
+            memory: 64Mi
+        ports:
+        - containerPort: 5775
+          protocol: UDP
+        - containerPort: 5778
+          protocol: TCP
+        - containerPort: 6831
+          protocol: UDP
+        - containerPort: 6832
+          protocol: UDP
+        readinessProbe:
+          httpGet:
+            path: "/"
+            port: 14271
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      volumes:
+      - configMap:
+          name: jaeger-configuration
+          items:
+            - key: agent
+              path: agent.yaml
+        name: jaeger-configuration-volume
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-agent
+  namespace: kube-public
+  labels:
+    k8s-app: jaeger-agent
+  annotations:
+    prometheus.io/component: "true"
+    prometheus.io/port: "14271"
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    k8s-app: jaeger-agent
+  ports:
+  - name: agent
+    port: 6831
+    protocol: UDP
+    targetPort: 6831
+  - name: http
+    port: 14271
+    protocol: TCP
+    targetPort: 14271

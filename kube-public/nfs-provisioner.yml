@@ -1,0 +1,138 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: nfs
+reclaimPolicy: Delete 
+parameters:
+  archiveOnDelete: "false"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-provisioner
+  labels:
+    app: nfs-provisioner
+  namespace: kube-public
+spec:
+  replicas: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nfs-provisioner
+  template:
+    metadata:
+      labels:
+        app: nfs-provisioner
+    spec:
+      serviceAccountName: nfs-provisioner
+      containers:
+      - name: nfs-provisioner
+        image: gcr.io/k8s-staging-sig-storage/nfs-subdir-external-provisioner:v4.0.0
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PROVISIONER_NAME
+          value: nfs
+        - name: NFS_SERVER
+          value: 192.168.75.6
+        - name: NFS_PATH
+          value: /opt/nfs
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 20m
+            memory: 64Mi
+        volumeMounts:
+        - name: nfs-root
+          mountPath: /persistentvolumes
+      volumes:
+      - name: nfs-root
+        nfs:
+          server: 192.168.75.6
+          path: /opt/nfs
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nfs
+  labels:
+    app: nfs-provisioner
+  namespace: kube-public
+spec:
+  selector:
+    app: nfs-provisioner
+  type: ClusterIP
+  clusterIP: None
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nfs-provisioner
+  namespace: kube-public
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: nfs-provisioner
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["services", "endpoints"]
+    verbs: ["get", "list", "watch", "create", "update"]
+  - apiGroups: ["extensions"]
+    resources: ["podsecuritypolicies"]
+    resourceNames: ["nfs-provisioner"]
+    verbs: ["use"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: nfs-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: nfs-provisioner
+    namespace: kube-public
+roleRef:
+  kind: ClusterRole
+  name: nfs-provisioner
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: nfs-provisioner-leader
+  namespace: kube-public
+rules:
+  - apiGroups: [""]
+    resources: ["endpoints"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: nfs-provisioner-leader
+  namespace: kube-public
+subjects:
+  - kind: ServiceAccount
+    name: nfs-provisioner
+    namespace: kube-public
+roleRef:
+  kind: Role
+  name: nfs-provisioner-leader
+  apiGroup: rbac.authorization.k8s.io

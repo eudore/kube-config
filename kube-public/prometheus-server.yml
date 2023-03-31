@@ -1,0 +1,166 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-server
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - nodes/proxy
+  - nodes/metrics
+  - services
+  - endpoints
+  - pods
+  verbs: ["get", "list", "watch"]
+- apiGroups:
+  - extensions
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs: ["get", "list", "watch"]
+- nonResourceURLs: ["/metrics"]
+  verbs: ["get"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-server
+  namespace: kube-public
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-server
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-server
+subjects:
+- kind: ServiceAccount
+  name: prometheus-server
+  namespace: kube-public
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: prometheus-server
+  namespace: kube-public
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-server
+  namespace: kube-public
+  labels:
+    name: prometheus-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: prometheus-server
+  template:
+    metadata:
+      labels:
+        k8s-app: prometheus-server
+    spec:
+      containers:
+      - image: docker.io/prom/prometheus:v2.40.5
+        name: prometheus-server
+        command:
+        - "/bin/prometheus"
+        args:
+        - "--config.file=/etc/prometheus/prometheus.yml"
+        - "--storage.tsdb.path=/prometheus"
+        - "--storage.tsdb.retention=24h"
+        - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+        - "--web.console.templates=/usr/share/prometheus/consoles"
+        - "--web.enable-lifecycle"
+        ports:
+        - containerPort: 9090
+          name: http
+          protocol: TCP
+        volumeMounts:
+        - mountPath: "/prometheus"
+          name: data
+        - mountPath: "/etc/prometheus"
+          name: config
+        - mountPath: "/etc/prometheus/rules"
+          name: rules
+        # livenessProbe:
+        #   httpGet:
+        #     path: /-/healthy
+        #     port: http
+        # readinessProbe:
+        #   httpGet:
+        #     path: /-/ready
+        #     port: http
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+      serviceAccountName: prometheus-server
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: prometheus-server
+      - name: config
+        configMap:
+          name: prometheus-configuration
+      - name: rules
+        configMap:
+          name: prometheus-rules
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: prometheus-server
+  namespace: kube-public
+  labels:
+    k8s-app: prometheus-server
+  annotations:
+    prometheus.io/component: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/probe: "true"
+    prometheus.io/http-path: "/-/healthy"
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 9090
+    protocol: TCP
+    targetPort: 9090 
+  selector:
+    k8s-app: prometheus-server
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus-server
+  namespace: kube-public
+  labels:
+    k8s-app: prometheus-server
+  annotations:
+    prometheus.io/probe: "true"
+    prometheus.io/path: "/-/healthy"
+spec:
+  ingressClassName: "nginx"
+  rules:
+  - host: prometheus.local.eudore.cn
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus-server
+            port:
+              number: 9090

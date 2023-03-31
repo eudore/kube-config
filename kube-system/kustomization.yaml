@@ -1,0 +1,5 @@
+namespace: kube-system
+resources:
+- admin.yml
+- calico.yml
+- kube-state-metrics.yml

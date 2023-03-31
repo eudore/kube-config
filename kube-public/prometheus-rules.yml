@@ -1,0 +1,447 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: kube-public
+data:
+  prometheus.yml: |
+    groups:
+    - name: Prometheus
+      rules:
+      - alert: Prometheus config reload
+        expr: prometheus_config_last_reload_successful == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Prometheus {{$labels.kubernetes_pod_name}} config last reload failed"
+      - alert: Prometheus query
+        expr: prometheus_engine_query_duration_seconds{quantile="0.99",slice="inner_eval"} > 0.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Prometheus {{$labels.kubernetes_pod_name}} p99 query time {{printf \"%.2f\" $value}}s"
+
+      - alert: Prometheus alertmanager
+        expr: prometheus_notifications_alertmanagers_discovered == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Prometheus {{$labels.kubernetes_pod_name}} alertmanager no setting"
+      - alert: Prometheus discovered targets
+        expr: prometheus_sd_discovered_targets == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Prometheus {{$labels.kubernetes_pod_name}} discovered {{$labels.config}} targets empty"
+      - alert: Prometheus discovered config
+        expr: prometheus_sd_failed_configs > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Prometheus {{$labels.kubernetes_pod_name}} discovered config {{$labels.name}} failed"
+      - alert: Prometheus timeserie cardinality
+        expr: label_replace(count({__name__=~".+"}) by(__name__), "name", "$1", "__name__", "(.+)") > 10000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          description: Prometheus timeserie cardinality {{$labels.name}} very higt {{$value}}
+    - name: Exporter
+      rules:
+      - alert: Exporter instance down
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Prometheus exporter {{$labels.job}} instance {{$labels.kubernetes_name}} {{$labels.kubernetes_pod_name}} {{$labels.instance}} is down"
+      - alert: Exporter job down
+        expr: count(up == 0) by (job) and 5 *count(up == 0) by (job) > count(up) by (job)
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Prometheus exporter job {{$labels.job}} down {{$value}} instance"
+    - name: Probe
+      rules:
+      - alert: Probe success
+        expr: probe_success==0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Prometheus probe {{$labels.instance}} failed"
+      - alert: Probe http duration
+        expr:  avg_over_time(probe_http_duration_seconds[1m]) > 3
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Prometheus probe {{$labels.instance}} http duration is {{$value}}"
+      - alert: Probe http body
+        expr: probe_http_uncompressed_body_length > 4096
+        for: 2m
+        labels:
+          severity: info
+        annotations:
+          description: "Prometheus probe {{$labels.instance}} http body length is {{$value}}"
+      - alert: Probe dns lookup
+        expr: probe_dns_lookup_time_seconds > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Prometheus probe {{$labels.instance}} dns lookup time is {{$value}}"
+      - alert: Probe ssl expiry
+        expr: ((probe_ssl_earliest_cert_expiry - time()) / 86400) < 15
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Prometheus probe {{$labels.instance}} ssl expiry {{$value}} day"
+  kubernetes.yml: |
+    groups:
+    - name: Kubernetes
+      rules: 
+      - alert: Not active4
+        expr: kube_deployment_spec_replicas != kube_deployment_status_replicas_available
+    - name: Node
+      rules: 
+      - alert: Node cpu
+        expr: sum(rate(container_cpu_usage_seconds_total{id="/"}[1m])) by (node) / sum(kube_node_status_allocatable{resource="cpu", unit="core"}) by(node) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes Node {{$labels.node}} cpu usege {{printf \"%.2f\" $value}}%"
+      - alert: Node memory
+        expr: sum(container_memory_usage_bytes{image!=""}) by(node) / sum(kube_node_status_allocatable{resource="memory", unit="byte"}) by(node) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes Node {{$labels.node}} memory usege {{printf \"%.2f\" $value}}%"
+      - alert: Node disk space
+        expr: container_fs_usage_bytes{device=~"/dev/[v|s]d\\w+",id="/"}/container_fs_limit_bytes*100 > 60
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes Node {{$labels.node}} disk quota usege {{printf \"%.2f\" $value}}%"
+      - alert: Node disk inode
+        expr: 100-container_fs_inodes_free{device=~"/dev/[v|s]d\\w+",id="/"}/container_fs_inodes_total*100 > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes Node {{$labels.node}} disk inode usege {{printf \"%.2f\" $value}}%"
+      - alert: Node io read
+        expr: sum(irate(container_fs_reads_bytes_total{device=~"/dev/[v|s]d\\w+", image!=""}[2m])) by (node) / 1048576 > 64
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes Node {{$labels.node}} io read speed {{printf \"%.2f\" $value}}MB/s"
+      - alert: Node io write
+        expr: sum(irate(container_fs_writes_bytes_total{device=~"/dev/[v|s]d\\w+", image!=""}[2m])) by (node) / 1048576 > 64
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes Node {{$labels.node}} io write speed {{printf \"%.2f\" $value}}MB/s"
+      - alert: Node network transmit
+        expr: sum(irate(container_network_transmit_bytes_total{}[2m])) by (node) / 1048576 > 64
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes Node {{$labels.node}} network transmit usege {{printf \"%.2f\" $value}}MB/s"
+      - alert: Node network receive
+        expr: sum(irate(container_network_receive_bytes_total{}[2m])) by (node) / 1048576 > 64
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes Node {{$labels.node}} network receive usege {{printf \"%.2f\" $value}}MB/s"
+      - alert: Node process
+        expr: container_processes{id="/"} > 256
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes Node {{$labels.node}} process usage {{$value}}"
+      - alert: Node threads
+        expr: container_threads{id="/"} > 256
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes Node {{$labels.node}} threads usage {{$value}}"
+      - alert: Node sockets
+        expr: container_sockets{id="/"} > 256
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes Node {{$labels.node}} sockets usage {{$value}}"
+      - alert: Node pod quota
+        expr: count by(kube_pod_info) (node) > sum(kube_node_status_allocatable{resource="pods",unit="integer"}) by (node) / 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes Node {{$labels.node}} pod quota usege {{$value}}"
+      - alert: Node cni quota
+        expr: count(kube_pod_info{pod_ip=~"172.[\\.\\d]+"}) by (node) > 36
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes Node {{$labels.node}} CNI IP usege {{$value}}/62"
+      - alert: Node unready
+        expr: kube_node_status_condition{condition="Ready", status="false"}==1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes Node {{$labels.node}} status is unready"
+      - alert: Node pressure
+        expr: kube_node_status_condition{condition=~".*Pressure|NetworkUnavailable", status="true"}==1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes Node {{$labels.node}} status {{$labels.condition}} is pressure"
+      - alert: Node status unknown
+        expr: kube_node_status_condition{status="unknown"}==1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes Node {{$labels.node}} status {{$labels.condition}} is unready"
+    - name: Pod
+      rules: 
+      - alert: Pod cpu
+        expr: sum(rate(container_cpu_usage_seconds_total{container!=""}[1m])) by (namespace,pod) / sum(container_spec_cpu_quota/container_spec_cpu_period) by (namespace,pod) * 100 > 40
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} cpu usage {{printf "%.2f" $value}}%
+      - alert: Pod cpu throttled
+        expr: increase(container_cpu_cfs_throttled_seconds_total{container!=""}[1m]) > 6
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} cpu throttled {{printf "%.2f" $value}}s
+      - alert: Pod memory
+        expr: label_replace(100 * container_memory_usage_bytes{container!=""} / (container_spec_memory_limit_bytes != 0) > 60, "id", "", "", "")
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} memory usage {{printf \"%.2f\" $value}}%"
+      - alert: Pod disk
+        expr: label_replace(container_fs_usage_bytes{pod!="", container!="",container!="POD"}/1024/1024/1024 > 20, "id", "", "", "")
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          comment: "not suppend containerd"
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} disk usage {{printf \"%.2f\" $value}}GB"
+      - alert: Pod io read
+        expr: irate(container_fs_reads_bytes_total{container!=""}[2m]) / 1048576 > 16
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} io read speed {{printf \"%.2f\" $value}}MB/s"
+      - alert: Pod io write
+        expr: irate(container_fs_writes_bytes_total{container!=""}[2m]) / 1048576 > 16
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} io write speed {{printf \"%.2f\" $value}}MB/s"
+      - alert: Pod network transmit
+        expr: irate(container_network_transmit_bytes_total{container!=""}[2m]) / 1048576 > 16
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} network transmit speed {{printf \"%.2f\" $value}}MB/s"
+      - alert: Pod network receive
+        expr: irate(container_network_receive_bytes_total{container!=""}[2m]) / 1048576 > 16
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} network receive speed {{printf \"%.2f\" $value}}MB/s"
+      - alert: Pod network dropped
+        expr: increase(container_network_receive_packets_dropped_total{image!=""}[5m]) + increase(container_network_transmit_packets_dropped_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} network dropped {{printf \"%.2f\" $value}}[5m]"
+      - alert: Pod network error
+        expr: increase(container_network_receive_errors_total{image!=""}[5m]) + increase(container_network_transmit_errors_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} network error count {{printf \"%.2f\" $value}}[5m]"
+      - alert: Pod process
+        expr: container_processes{container!=""} > 256
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} process usage {{$value}}"
+      - alert: Pod threads
+        expr: container_threads{container!=""} > 256
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} threads usage {{$value}}"
+      - alert: Pod sockets
+        expr: container_sockets{container!=""} > 256
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} sockets usage {{$value}}"
+      - alert: Pod pending
+        expr: kube_pod_status_phase{phase!~"Running|Succeeded",pod!=""} == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} status is {{$labels.phase}}"
+      - alert: Pod unschedulable
+        expr: kube_pod_status_unschedulable{pod!=""}
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} unschedulable"
+      - alert: Pod unready
+        expr: kube_pod_container_status_ready == 0 unless ignoring(reason) kube_pod_container_status_terminated_reason{reason="Completed"}
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} status is unready"
+      - alert: Pod reason
+        expr: kube_pod_status_reason{pod!=""} == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} reason is {{$labels.reason}}"
+      - alert: Pod container restart
+        expr: increase(kube_pod_container_status_restarts_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} container {{$labels.container}} last 5min restart count {{printf \"%.0f\" $value}}"
+      - alert: Pod container oom
+        expr: kube_pod_container_status_restarts_total > kube_pod_container_status_restarts_total offset 10m and ignoring(reason) kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} container {{$labels.container}} oom"
+      - alert: Pod container reason
+        expr: kube_pod_container_status_waiting_reason{reason!="ContainerCreating"} == 1 or kube_pod_container_status_terminated_reason{reason!="Completed"} == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} container {{$labels.container}} reason is {{$labels.reason}}"
+      - alert: Pod probe
+        expr: increase(prober_probe_total{job="kubernetes-node-probes",pod=~"metrics-proxy",result="failed"}[60s]) >=3
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Kubernetes {{$labels.namespace}} Pod {{$labels.pod}} probe {{$labels.probe_type}} failed count {{printf \"%.0f\" $value}}"
+  calico.yml: |
+    groups:
+    - name: Calico
+      rules:
+      - alert: PromHTTPRequestErrors
+        expr: (sum(rate(promhttp_metric_handler_requests_total{job="calico-node",code=~"(4|5).."}[5m] offset 5m )) by (instance, job, cluster, host) / sum(rate(promhttp_metric_handler_requests_total{job="calico-node"}[5m] offset 5m )) by (instance, job, cluster, host)) * 100 > 1
+        for: 10m
+        labels:
+          severity: warning
+          type: calico-node
+        annotations:
+          description: "Cluster {{ $labels.cluster }}: HTTP requests errors on host {{ $labels.host }}."
+          summary: Calico HTTP requests errors on cluster {{ $labels.cluster }}
+
+      - alert: CalicoDatapaneFailuresHigh
+        expr: increase(felix_int_dataplane_failures[1h] offset 5m) > 5
+        for: 1h
+        labels:
+          severity: warning
+          type: calico-node
+        annotations:
+          description: 'Felix cluster {{ $labels.cluster }} has seen {{ $value }} dataplane failures within the last hour'
+          summary: 'A high number of dataplane failures within Felix are happening'
+
+      - alert: CalicoIpsetErrorsHigh
+        expr: increase(felix_ipset_errors[1h] offset 5m) > 5
+        for: 1h
+        labels:
+          severity: warning
+          type: calico-node
+        annotations:
+          description: 'Felix cluster {{ $labels.cluster }} has seen {{ $value }} ipset errors within the last hour'
+          summary: 'A high number of ipset errors within Felix are happening'
+
+      - alert: CalicoIptableSaveErrorsHigh
+        expr: increase(felix_iptables_save_errors[1h] offset 5m) > 5
+        for: 1h
+        labels:
+          severity: warning
+          type: calico-node
+        annotations:
+          description: 'Felix cluster {{ $labels.cluster }} has seen {{ $value }} iptable save errors within the last hour'
+          summary: 'A high number of iptable save errors within Felix are happening'
+
+      - alert: CalicoIptableRestoreErrorsHigh
+        expr: increase(felix_iptables_restore_errors[1h] offset 5m) > 5
+        for: 1h
+        labels:
+          severity: warning
+          type: calico-node
+        annotations:
+          description: 'Felix cluster {{ $labels.cluster }} has seen {{ $value }} iptable restore errors within the last hour'
+          summary: 'A high number of iptable restore errors within Felix are happening'
+      - alert: TyphaPingLatency
+        expr: rate(typha_ping_latency_sum[1m] offset 5m ) / rate(typha_ping_latency_count[1m] offset 5m ) > 0.1 and rate(typha_ping_latency_count[1m] offset 5m ) > 0
+        for: 2m
+        labels:
+          severity: warning
+          type: calico-typha
+        annotations:
+          summary: Typha Round-trip ping latency to client (cluster {{ $labels.cluster }})
+          description: "Typha latency is growing (ping operations > 100ms)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+      - alert: TyphaClientWriteLatency
+        expr: rate(typha_client_write_latency_secs_sum[1m] offset 5m) / rate(typha_client_write_latency_secs_count[1m] offset 5m) > 0.1 and rate(typha_client_write_latency_secs_count[1m] offset 5m ) > 0
+        for: 2m
+        labels:
+          severity: warning
+          type: calico-typha
+        annotations:
+          summary: Typha unusual write latency (instance {{ $labels.cluster }})
+          description: "Typha client latency is growing (write operations > 100ms)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

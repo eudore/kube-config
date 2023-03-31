@@ -1,0 +1,50 @@
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: InitConfiguration
+bootstrapTokens:
+- groups:
+  - system:bootstrappers:kubeadm:default-node-token
+  token: abcdef.0123456789abcdef
+  ttl: 24h0m0s
+  usages:
+  - signing
+  - authentication
+localAPIEndpoint:
+  advertiseAddress: 192.168.75.6
+  bindPort: 6443
+nodeRegistration:
+  criSocket: unix:///var/run/containerd/containerd.sock
+  imagePullPolicy: IfNotPresent
+  name: node1
+  taints: null
+---
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: ClusterConfiguration
+clusterName: kubernetes
+certificatesDir: /etc/kubernetes/pki
+imageRepository: registry.aliyuncs.com/google_containers
+kubernetesVersion: 1.26.0
+networking:
+  dnsDomain: cluster.local
+  podSubnet: 172.18.0.0/16
+  serviceSubnet: 172.19.0.0/16
+apiServer:
+  certSANs:
+  - "192.168.75.6"
+  - "192.168.75.7"
+  - "192.168.75.8"
+  - "192.168.75.9"
+  extraArgs:
+    authorization-mode: "Node,RBAC"
+  timeoutForControlPlane: 4m0s
+dns: {}
+etcd:
+  local:
+    dataDir: /var/lib/etcd
+    extraArgs:
+      listen-metrics-urls: http://0.0.0.0:2381
+controllerManager: 
+  extraArgs:
+    bind-address: "0.0.0.0"
+scheduler: 
+  extraArgs:
+    bind-address: "0.0.0.0"

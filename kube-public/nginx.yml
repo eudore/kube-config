@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx
+  namespace: kube-public
+  labels:
+    app: nginx
+data:
+  default.conf: |
+    server {
+      listen       80;
+      listen  [::]:80;
+      server_name  localhost;
+      root   /usr/share/nginx/html;
+
+      location / {
+        index  index.html index.htm;
+        autoindex   on;
+        autoindex_exact_size  off;
+        autoindex_localtime   on;
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: kube-public
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: eudore-endpoint
+        image: nginx:1.22-alpine
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/nginx/conf.d/
+      volumes:
+      - configMap:
+          name: nginx
+        name: config-volume
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  namespace: kube-public
+  labels:
+    app: nginx
+  annotations:
+    prometheus.io/probe: "true"
+    prometheus.io/port: "80"
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: nginx
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nginx
+  namespace: kube-public
+  labels:
+    app: nginx
+  annotations:
+    prometheus.io/probe: "true"
+spec:
+  ingressClassName: "nginx"
+  rules:
+  - host: nginx.local.eudore.cn
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx
+            port:
+              number: 80

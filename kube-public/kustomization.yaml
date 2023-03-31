@@ -1,0 +1,31 @@
+namespace: kube-public
+resources:
+- ../common
+- metrics-server.yml
+- kubernetes-dashboard.yml
+- nfs-provisioner.yml
+- ingress-nginx-configuration.yml
+- ingress-nginx-daemonset.yml
+# - ingress-nginx-deployment.yml
+- prometheus-alertmanager.yml
+- prometheus-blackbox.yml
+- prometheus-configuration.yml
+- prometheus-rules.yml
+- prometheus-server.yml
+- grafana.yml
+- jaeger-agent.yml
+- jaeger-collector.yml
+- jaeger-configuration.yml
+- jaeger-query.yml
+- elastic-cluster.yml
+# - elastic-search.yml
+- elastic-exporter.yml
+- elastic-kibana.yml
+- fluentd.yml
+- code-server.yml
+- godoc.yml
+- goplay.yml
+- nginx.yml
+- postgres.yml
+- mysql.yml
+- nodeport.yml

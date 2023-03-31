@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: goplay
+  namespace: kube-public
+spec:
+  selector:
+    matchLabels:
+      app: goplay
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: goplay
+    spec:
+      enableServiceLinks: false
+      containers:
+      - name: goplay
+        image: gcr.io/golang-org/playground:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        resources:
+          limits:
+            cpu: 100m
+            memory: 256Mi
+          requests:
+            cpu: 20m
+            memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: goplay
+  namespace: kube-public
+  labels:
+    app: goplay
+spec:
+  ports:
+  - name: http
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: goplay
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: goplay
+  namespace: kube-public
+  labels:
+    app: goplay
+  annotations:
+    prometheus.io/probe: "true"
+spec:
+  ingressClassName: "nginx"
+  rules:
+  - host: goplay.local.eudore.cn
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: goplay
+            port:
+              number: 8080
+  tls:
+  - hosts:
+    - goplay.local.eudore.cn

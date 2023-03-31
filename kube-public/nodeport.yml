@@ -1,0 +1,107 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodeport-ingress-nginx-controller
+  namespace: kube-public
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: ingress-nginx
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: http
+    nodePort: 30000
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: https
+    nodePort: 30001
+---
+kind: Service
+apiVersion: v1
+metadata:
+  labels:
+    k8s-app: prometheus
+  name: nodeport-prometheus
+  namespace: kube-public
+spec:
+  type: NodePort
+  ports:
+  - port: 9090
+    targetPort: 9090
+    nodePort: 30002
+  selector:
+    k8s-app: prometheus-server
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodeport-grafana
+  namespace: kube-public
+  labels:
+    k8s-app: grafana
+spec:
+  type: NodePort
+  ports:
+  - port: 3000
+    nodePort: 30003
+  selector:
+    k8s-app: grafana
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodeport-jaeger-query
+  namespace: kube-public
+  labels:
+    k8s-app: jaeger-query
+spec:
+  type: NodePort
+  ports:
+  - name: jaeger-query
+    port: 80
+    protocol: TCP
+    targetPort: 16686
+    nodePort: 30004
+  selector:
+    k8s-app: jaeger-query
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodeport-kibana
+  namespace: kube-public
+  labels:
+    app: kibana
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 5601
+    protocol: TCP
+    name: http
+    nodePort: 30005
+  selector:
+    app: kibana
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodeport-godoc
+  namespace: kube-public
+  labels:
+    app: godoc
+spec:
+  type: NodePort
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: 80
+    nodePort: 30006
+  selector:
+    app: godoc

@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger-query
+  namespace: kube-public
+  labels:
+    k8s-app: jaeger-query
+spec:
+  replicas: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      k8s-app: jaeger-query
+  template:
+    metadata:
+      labels:
+        k8s-app: jaeger-query
+    spec:
+      enableServiceLinks: false
+      containers:
+      - image: docker.io/jaegertracing/jaeger-query:1.39.0
+        name: jaeger-query
+        imagePullPolicy: IfNotPresent
+        args: ["--config-file=/conf/query.yaml", "--query.ui-config=/conf/ui.json"]
+        ports:
+        - containerPort: 16685
+          protocol: TCP
+        - containerPort: 16686
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 20m
+            memory: 64Mi
+        readinessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: "/"
+            port: 16687
+        volumeMounts:
+        - name: jaeger-configuration-volume
+          mountPath: /conf
+        env:
+        - name: SPAN_STORAGE_TYPE
+          valueFrom:
+            configMapKeyRef:
+              name: jaeger-configuration
+              key: span-storage-type
+        - name: METRICS_STORAGE_TYPE
+          value: prometheus
+      volumes:
+      - name: jaeger-configuration-volume
+        configMap:
+          name: jaeger-configuration
+          items:
+          - key: query
+            path: query.yaml
+          - key: ui
+            path: ui.json
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-query
+  namespace: kube-public
+  labels:
+    k8s-app: jaeger-query
+  annotations:
+    prometheus.io/component: "true"
+    prometheus.io/probe: "true"
+    prometheus.io/port: "16687"
+spec:
+  type: ClusterIP
+  selector:
+    k8s-app: jaeger-query
+  ports:
+  - name: grpc
+    port: 16685
+    protocol: TCP
+    targetPort: 16685
+  - name: web
+    port: 80
+    protocol: TCP
+    targetPort: 16686
+  - name: http
+    port: 16687
+    protocol: TCP
+    targetPort: 16687
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jaeger-query
+  namespace: kube-public
+  labels:
+    k8s-app: jaeger-query
+  annotations:
+    prometheus.io/probe: "true"
+    prometheus.io/path: "/favicon.ico"
+spec:
+  ingressClassName: "nginx"
+  rules:
+  - host: jaeger-query.local.eudore.cn
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: jaeger-query
+            port:
+              number: 80
