@@ -1,30 +1,3 @@
-# Source: ingress-nginx/templates/controller-service.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: ingress-nginx-controller
-  namespace: kube-public
-  labels:
-    k8s-app: ingress-nginx
-  annotations:
-    prometheus.io/component: "true"
-    prometheus.io/port: "10254"
-    prometheus.io/probe: "true"
-    prometheus.io/http-path: "/healthz"
-spec:
-  type: ClusterIP
-  selector:
-    k8s-app: ingress-nginx
-  ports:
-  - name: http
-    port: 80
-    protocol: TCP
-    targetPort: http
-  - name: https
-    port: 443
-    protocol: TCP
-    targetPort: https
----
 # Source: ingress-nginx/templates/controller-deployment.yaml
 apiVersion: apps/v1
 kind: DaemonSet
@@ -46,7 +19,7 @@ spec:
       dnsPolicy: ClusterFirst
       containers:
         - name: ingress-nginx-controller
-          image: registry.k8s.io/ingress-nginx/controller:v1.7.0
+          image: registry.k8s.io/ingress-nginx/controller:v1.9.0@sha256:c15d1a617858d90fb8f8a2dd60b0676f2bb85c54e3ed11511794b86ec30c8c60
           imagePullPolicy: IfNotPresent
           lifecycle:
             preStop:
@@ -62,6 +35,7 @@ spec:
             - --controller-class=k8s.io/ingress-nginx
             - --ingress-class=nginx
             - --configmap=$(POD_NAMESPACE)/ingress-nginx-controller
+            - --tcp-services-configmap=$(POD_NAMESPACE)/ingress-tcp-services
             - --validating-webhook=:8443
             - --validating-webhook-certificate=/usr/local/certificates/cert
             - --validating-webhook-key=/usr/local/certificates/key

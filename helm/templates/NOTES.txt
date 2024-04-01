@@ -1,0 +1,16 @@
+{{- if .Values.debug -}}
+{{- $_ := include "init" . }}
+type: {{ coalesce .Values.type "undefined" }}
+namespace: {{ .Release.Namespace }}
+name: {{ .Release.Name }}
+{{- range $_, $key := list "hooks" "rules" "deployment" "service" "ingress" "hpa" "pdb" }}
+{{- with get $.Values.data $key }}
+{{ $key }}:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+{{- end -}}
+{{- with .Values.data.message }}
+message:
+  {{ toYaml . | nindent 2 | trim }}
+{{- end }}

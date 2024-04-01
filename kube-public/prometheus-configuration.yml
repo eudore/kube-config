@@ -90,11 +90,11 @@ data:
         regex: (etcd|coredns|kube-proxy|kube-state-metrics|calico-.*)
         replacement: http
       - source_labels: [__meta_kubernetes_namespace]
-        target_label: kubernetes_namespace
+        target_label: namespace
       - source_labels: [__meta_kubernetes_pod_container_name]
-        target_label: kubernetes_name
+        target_label: name
       - source_labels: [__meta_kubernetes_pod_name]
-        target_label: kubernetes_pod_name
+        target_label: pod
       - regex: __meta_kubernetes_pod_(labelpresent|annotation|annotationpresent)_(.*)
         action: labeldrop
     - job_name: 'kubernetes-metrics'
@@ -117,6 +117,26 @@ data:
         target_label: __metrics_path__
         regex: (.+)
         replacement: /api/v1/nodes/${1}/proxy/metrics
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: node
+      - regex: __meta_kubernetes_node_labelpresent_(.*)
+        action: labeldrop
+      - regex: __meta_kubernetes_node_(annotation|labelpresent|annotationpresent)_(.*)
+        action: labeldrop
+    - job_name: 'kubernetes-node-resource'
+      kubernetes_sd_configs:
+      - role: node
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      relabel_configs:
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: __metrics_path__
+        regex: (.+)
+        replacement: /api/v1/nodes/${1}/proxy/metrics/resource
       - source_labels: [__meta_kubernetes_node_name]
         target_label: node
       - regex: __meta_kubernetes_node_labelpresent_(.*)
@@ -182,11 +202,11 @@ data:
         regex: ([^:]+)(?::\d+)?;(\d+)
         replacement: $1:$2
       - source_labels: [__meta_kubernetes_namespace]
-        target_label: kubernetes_namespace
+        target_label: namespace
       - source_labels: [__meta_kubernetes_pod_container_name]
-        target_label: kubernetes_name
+        target_label: name
       - source_labels: [__meta_kubernetes_pod_name]
-        target_label: kubernetes_pod_name
+        target_label: pod
       - regex: __meta_kubernetes_pod_labelpresent_(.*)
         action: labeldrop
       - regex: __meta_kubernetes_pod_(labelpresent|annotation|annotationpresent|container_port)_(.*)
@@ -210,11 +230,11 @@ data:
         regex: ([^:]+)(?::\d+)?;(\d+)
         replacement: $1:$2
       - source_labels: [__meta_kubernetes_namespace]
-        target_label: kubernetes_namespace
+        target_label: namespace
       - source_labels: [__meta_kubernetes_endpoints_name]
-        target_label: kubernetes_name
+        target_label: name
       - source_labels: [__meta_kubernetes_pod_name]
-        target_label: kubernetes_pod_name
+        target_label: pod
       - regex: __meta_kubernetes_service_name
         action: labeldrop
       - regex: __meta_kubernetes_service_annotationpresent_(.*)
@@ -241,11 +261,11 @@ data:
         regex: ([^:]+)(?::\d+)?;(\d+)
         replacement: $1:$2
       - source_labels: [__meta_kubernetes_namespace]
-        target_label: kubernetes_namespace
+        target_label: namespace
       - source_labels: [__meta_kubernetes_endpoints_name]
-        target_label: kubernetes_name
+        target_label: name
       - source_labels: [__meta_kubernetes_pod_name]
-        target_label: kubernetes_pod_name
+        target_label: pod
       - regex: __meta_kubernetes_service_name
         action: labeldrop
       - regex: __meta_kubernetes_service_annotationpresent_(.*)
@@ -270,7 +290,7 @@ data:
       - source_labels: [__meta_kubernetes_service_port_name, __param_target, __meta_kubernetes_service_annotation_prometheus_io_http_path]
         target_label: instance
         regex: (\w+);(\S+);(\S*)
-        replacement: ${1}://${2}${3}
+        replacement: ${1}://${2}
       - source_labels: [__meta_kubernetes_service_port_name, __param_target, __meta_kubernetes_service_annotation_prometheus_io_http_path]
         target_label: __param_target
         regex: (http|https);(\S+);(\S*)
@@ -288,9 +308,9 @@ data:
       - replacement: prometheus-blackbox.kube-public:9115
         target_label: __address__
       - source_labels: [__meta_kubernetes_namespace]
-        target_label: kubernetes_namespace
+        target_label: namespace
       - source_labels: [__meta_kubernetes_service_name]
-        target_label: kubernetes_name
+        target_label: name
       - regex: __meta_kubernetes_service_(labelpresent|annotation|annotationpresent)_(.*)
         action: labeldrop
     - job_name: 'kubernetes-ingresses'
@@ -303,14 +323,20 @@ data:
       - source_labels: [__meta_kubernetes_ingress_annotation_prometheus_io_probe, __meta_kubernetes_ingress_path]
         regex: true;/
         action: keep
-      - source_labels: [__meta_kubernetes_ingress_scheme, __address__, __meta_kubernetes_ingress_annotation_prometheus_io_path]
+      - source_labels: [__meta_kubernetes_ingress_scheme, __address__]
+        target_label: instance
+        regex: http;(.+)
+        replacement: http://${1}:80
+      - source_labels: [__meta_kubernetes_ingress_scheme, __address__]
+        target_label: instance
+        regex: https;(.+)
+        replacement: https://${1}:443
+      - source_labels: [instance]
         target_label: __param_target
-        regex: http;(.+);(.*)
-        replacement: http://${1}:80${2}
-      - source_labels: [__meta_kubernetes_ingress_scheme, __address__, __meta_kubernetes_ingress_annotation_prometheus_io_path]
+      - source_labels: [instance, __meta_kubernetes_ingress_annotation_prometheus_io_path]
         target_label: __param_target
-        regex: https;(.+);(.*)
-        replacement: https://${1}:443${2}
+        regex: (.+);(.+)
+        replacement: ${1}${2}
       - source_labels: [__meta_kubernetes_ingress_scheme,__meta_kubernetes_ingress_annotation_prometheus_io_module]
         target_label: __param_module
         regex: (\w+);(.+)
@@ -320,12 +346,10 @@ data:
         regex: (.+)
       - target_label: __address__
         replacement: prometheus-blackbox.kube-public:9115
-      - source_labels: [__param_target]
-        target_label: instance
       - source_labels: [__meta_kubernetes_namespace]
-        target_label: kubernetes_namespace
+        target_label: namespace
       - source_labels: [__meta_kubernetes_ingress_name]
-        target_label: kubernetes_name
+        target_label: name
       - regex: __meta_kubernetes_ingress_(labelpresent|annotation|annotationpresent)_(.*)
         action: labeldrop
   blackbox.yaml: |

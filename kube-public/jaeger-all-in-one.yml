@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger-all-in-one
+  namespace: kube-public
+  labels:
+    k8s-app: jaeger-all-in-one
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: jaeger-all-in-one
+  template:
+    metadata:
+      labels:
+        k8s-app: jaeger-all-in-one
+    spec:
+      enableServiceLinks: false
+      containers:
+      - image: docker.io/jaegertracing/all-in-one:1.55
+        name: jaeger-all-in-one
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 6831
+          protocol: UDP
+        - containerPort: 16686
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 20m
+            memory: 64Mi
+        readinessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: "/"
+            port: 16686
+        volumeMounts:
+        - name: jaeger-data-volume
+          mountPath: /badger
+        env:
+        - name: SPAN_STORAGE_TYPE
+          value: badger
+        - name: BADGER_EPHEMERAL
+          value: "false"
+        - name: BADGER_DIRECTORY_VALUE
+          value: /badger/data
+        - name: BADGER_DIRECTORY_KEY
+          value: /badger/key
+        - name: METRICS_STORAGE_TYPE
+          value: prometheus
+      volumes:
+      - name: jaeger-data-volume
+        emptyDir:
+          sizeLimit: 500Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-all-in-one
+  namespace: kube-public
+  labels:
+    k8s-app: jaeger-all-in-one
+  annotations:
+    prometheus.io/component: "true"
+    prometheus.io/probe: "true"
+    prometheus.io/port: "16687"
+spec:
+  type: ClusterIP
+  selector:
+    k8s-app: jaeger-all-in-one
+  ports:
+  - name: agent
+    port: 6831
+    protocol: UDP
+    targetPort: 6831
+  - name: web
+    port: 80
+    protocol: TCP
+    targetPort: 16686
+  - name: http
+    port: 4318
+    protocol: TCP
+    targetPort: 4318
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jaeger-all-in-one
+  namespace: kube-public
+  labels:
+    k8s-app: jaeger-all-in-one
+  annotations:
+    prometheus.io/probe: "true"
+    prometheus.io/path: "/favicon.ico"
+spec:
+  ingressClassName: "nginx"
+  rules:
+  - host: jaeger-allin.kube-public.eudore.cn
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: jaeger-all-in-one
+            port:
+              number: 80

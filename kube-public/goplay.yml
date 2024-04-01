@@ -1,3 +1,4 @@
+# https://github.com/golang/playground
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,6 +21,9 @@ spec:
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
+        env:
+        - name: SANDBOX_BACKEND_URL
+          value: http://gosandbox.kube-public.svc/run
         resources:
           limits:
             cpu: 100m
@@ -70,3 +74,57 @@ spec:
   tls:
   - hosts:
     - goplay.local.eudore.cn
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gosandbox
+  namespace: kube-public
+spec:
+  selector:
+    matchLabels:
+      app: gosandbox
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: gosandbox
+    spec:
+      enableServiceLinks: false
+      containers:
+      - name: gosandbox
+        image: gcr.io/golang-org/playground-sandbox:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: 100m
+            memory: 256Mi
+          requests:
+            cpu: 20m
+            memory: 64Mi
+        volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+      volumes:
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gosandbox
+  namespace: kube-public
+  labels:
+    app: gosandbox
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: gosandbox
+  type: ClusterIP

@@ -1,0 +1,84 @@
+{{- $_ := include "init" . }}
+{{- $hpa := .Values.data.hpa }}
+{{- if and $hpa.enabled (semverCompare ">=1.23-0" .Capabilities.KubeVersion.GitVersion) }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "selectorLabels" . | nindent 4 }}
+    {{- with $hpa.labels }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $hpa.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }} 
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}
+  minReplicas: {{ $hpa.min }}
+  maxReplicas: {{ $hpa.max }}
+  metrics:
+  {{- range $_, $metric := $hpa.metrics }}
+  - type: {{ $metric.type | title }}
+    {{ $metric.type | print }}:
+      {{- if eq $metric.type "resource" "containerResource"}}
+      name: {{ $metric.name }}
+      {{- if $metric.container }}
+      container: {{ $metric.container }}
+      {{- end }}
+      {{- else }}
+      metric:
+        name: {{ $metric.name }}
+      {{- end}}
+      {{- if eq $metric.type "object" }}
+      describedObject: {{ $metric.object | toYaml | nindent 8 }}
+      {{- end }}
+      target:
+        {{- if and (eq $metric.type "resource" "containerResource") (hasSuffix "%" $metric.value) }}
+        type: Utilization
+        averageUtilization: {{ $metric.value | trimPrefix "avg " | trimSuffix "%" }}
+        {{- else if and (eq $metric.type "object" "external") (not (hasPrefix "avg " $metric.value)) }}
+        type: Value
+        value: {{ $metric.value | trimSuffix "%" }}
+        {{- else }}
+        type: AverageValue
+        averageValue: {{ $metric.value | trimPrefix "avg " | trimSuffix "%" }}
+        {{- end}}
+  {{- end }}
+  behavior:
+    {{- with $hpa.up }}
+    scaleUp:
+      {{- include "hpa-scaling" . | trim | nindent 6 }}
+    {{- end }}
+    {{- with $hpa.down }}
+    scaleDown:
+      {{- include "hpa-scaling" . | trim | nindent 6 }}
+    {{- end }}
+{{- end }}
+
+{{- define "hpa-scaling" }}
+selectPolicy: {{ (default "max" .select) | title }}
+{{- if ne (print .select) "disabled" }}
+{{- with .window}}
+stabilizationWindowSeconds: {{ . }}
+{{- end }}
+{{- $vals := list }}
+{{- range $_, $val := .values }}
+  {{- $match := splitList " " $val }}
+  {{- if eq (len $match) 2 }}{{ $vals = append $vals $match }}{{ end }}
+{{- end }}
+{{- with $vals }}
+policies: 
+{{- range $_, $val := $vals }}
+- type: {{ if hasSuffix "%" (index $val 0) }}Percent{{ else }}Pods{{ end }}
+  value: {{ index $val 0 | trimSuffix "%" }}
+  periodSeconds: {{ index $val 1 }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

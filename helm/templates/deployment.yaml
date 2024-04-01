@@ -1,0 +1,93 @@
+{{- $_ := include "init" . }}
+{{- $deployment := .Values.data.deployment }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "selectorLabels" . | nindent 4 }}
+    {{- with $deployment.labels }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    meta.helm.sh/release-chart: {{ .Chart.Name }}
+    {{- if .Values.type }}
+    meta.helm.sh/release-type: {{ coalesce .Values.type "" }}
+    {{- end }}
+    {{- with $deployment.annotations }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with $deployment.replicas }}
+  replicas: {{ . }}
+  {{- end }}
+  {{- with $deployment.historyLimit }}
+  revisionHistoryLimit: {{ . }}
+  {{- end }}
+  {{- with $deployment.strategy }}
+  strategy: {{ toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "selectorLabels" . | nindent 8 }}
+        {{- with $deployment.podlabels }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with $deployment.podannotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: topology.kubernetes.io/zone
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - {{ .Release.Name }}
+      {{- with $deployment.image.secrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 6 }}
+      {{- end }}
+      containers:
+      - name: {{ .Release.Name }}
+        image: {{ $deployment.image.repository }}{{ $deployment.image.name }}
+        imagePullPolicy: {{ $deployment.image.policy }}
+        {{- range $_, $key := list "command" "args" "lifecycle" "ports"}}
+        {{- with get $deployment $key }}
+        {{ $key }}:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- end }}
+        env:
+        {{- range $key, $val := $deployment.env }}
+        - name: {{ $key }}
+          {{- if kindIs "map" $val }}
+          valueFrom: {{- toYaml $val | nindent 12 }}
+          {{- else }}
+          value: "{{ $val }}"
+          {{- end }}
+        {{- end }}
+        {{- range $_, $key := list "resources" "livenessProbe" "readinessProbe" "startupProbe" "volumeMounts" "customContainer"}}
+        {{- with get $deployment $key }}
+        {{ $key }}:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- end }}
+      {{- with $deployment.volumes }}
+      volumes:
+        {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with $deployment.customPod }}
+        {{- toYaml . | nindent 6 }}
+      {{- end }}

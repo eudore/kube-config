@@ -125,7 +125,7 @@ metadata:
   annotations:
     prometheus.io/port: "5601"
     prometheus.io/probe: "true"
-    prometheus.io/http-path: "/api/status"
+    prometheus.io/http-path: "/api/licensing/info"
 spec:
   type: ClusterIP
   selector:
@@ -143,7 +143,7 @@ metadata:
    namespace: kube-public
    annotations:
     prometheus.io/probe: "true"
-    prometheus.io/path: "/api/status"
+    prometheus.io/path: "/api/licensing/info"
 spec:
   ingressClassName: "nginx"
   rules:

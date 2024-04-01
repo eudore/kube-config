@@ -1,0 +1,31 @@
+{{- $_ := include "init" . }}
+{{- $pdb := .Values.data.pdb }}
+{{- if and $pdb.enabled (semverCompare ">=1.21-0" .Capabilities.KubeVersion.GitVersion) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "selectorLabels" . | nindent 4 }}
+    {{- with $pdb.labels }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $pdb.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }} 
+spec:  
+  selector:
+    matchLabels:
+      {{- include "selectorLabels" . | nindent 6 }}
+  {{- with $pdb.min }}
+  minAvailable: {{ . }}
+  {{- end }}
+  {{- with $pdb.max }}
+  maxUnavailable: {{ . }}
+  {{- end }}
+  {{- if and (semverCompare ">=1.26-0" .Capabilities.KubeVersion.GitVersion) $pdb.policy }}
+  unhealthyPodEvictionPolicy: {{ $pdb.policy }}
+  {{- end }}
+{{- end }}

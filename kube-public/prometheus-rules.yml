@@ -8,6 +8,20 @@ data:
     groups:
     - name: Prometheus
       rules:
+      - alert: Exporter instance down
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Prometheus exporter {{$labels.job}} instance {{$labels.kubernetes_name}} {{$labels.kubernetes_pod_name}} {{$labels.instance}} is down"
+      - alert: Exporter job down
+        expr: count(up == 0) by (job) and 5 *count(up == 0) by (job) > count(up) by (job)
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          description: "Prometheus exporter job {{$labels.job}} down {{$value}} instance"
       - alert: Prometheus config reload
         expr: prometheus_config_last_reload_successful == 0
         for: 2m
@@ -22,7 +36,6 @@ data:
           severity: warning
         annotations:
           description: "Prometheus {{$labels.kubernetes_pod_name}} p99 query time {{printf \"%.2f\" $value}}s"
-
       - alert: Prometheus alertmanager
         expr: prometheus_notifications_alertmanagers_discovered == 0
         for: 2m
@@ -51,22 +64,6 @@ data:
           severity: warning
         annotations:
           description: Prometheus timeserie cardinality {{$labels.name}} very higt {{$value}}
-    - name: Exporter
-      rules:
-      - alert: Exporter instance down
-        expr: up == 0
-        for: 2m
-        labels:
-          severity: warning
-        annotations:
-          description: "Prometheus exporter {{$labels.job}} instance {{$labels.kubernetes_name}} {{$labels.kubernetes_pod_name}} {{$labels.instance}} is down"
-      - alert: Exporter job down
-        expr: count(up == 0) by (job) and 5 *count(up == 0) by (job) > count(up) by (job)
-        for: 2m
-        labels:
-          severity: warning
-        annotations:
-          description: "Prometheus exporter job {{$labels.job}} down {{$value}} instance"
     - name: Probe
       rules:
       - alert: Probe success

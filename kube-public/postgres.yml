@@ -6,9 +6,9 @@ metadata:
   labels:
     app: postgres
 data:
-  POSTGRES_DB: postgresdb
-  POSTGRES_USER: postgresadmin
-  POSTGRES_PASSWORD: admin12345
+  POSTGRES_DB: postgres
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -45,8 +45,8 @@ spec:
     spec:
       containers:
       - name: postgres
-        image: docker.io/postgres:12.2
-        imagePullPolicy: "IfNotPresent"
+        image: docker.io/library/postgres:15.2
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 5432
         envFrom:

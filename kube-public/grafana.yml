@@ -1,7 +1,7 @@
 kind: PersistentVolumeClaim
 apiVersion: v1
 metadata:
-  name: grafana-volume
+  name: grafana
   namespace: kube-public
 spec:
   accessModes:
@@ -29,7 +29,7 @@ spec:
     spec:
       enableServiceLinks: false
       containers:
-      - image: docker.io/grafana/grafana:8.2.5
+      - image: docker.io/grafana/grafana-enterprise:10.2.2
         name: grafana
         imagePullPolicy: IfNotPresent
         resources:
@@ -44,20 +44,22 @@ spec:
           value: "true"
         - name: GF_AUTH_ANONYMOUS_ENABLED
           value: "true"
+        - name: GF_DATABASE_WAL
+          value: "true"
         readinessProbe:
           httpGet:
             path: /login
             port: 3000
         securityContext:
-          runAsUser: 472
-          runAsGroup: 472
+          runAsUser: 0
+          runAsGroup: 0
         volumeMounts:
         - name: grafana-volume
           mountPath: /var/lib/grafana
       volumes:
       - name: grafana-volume
         persistentVolumeClaim:
-          claimName: grafana-volume
+          claimName: grafana
 ---
 apiVersion: v1
 kind: Service

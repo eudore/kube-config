@@ -50,7 +50,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 10Gi
+      storage: 200Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -61,6 +61,8 @@ metadata:
     name: prometheus-server
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       k8s-app: prometheus-server
@@ -102,11 +104,11 @@ spec:
         #     port: http
         resources:
           requests:
-            cpu: 100m
+            cpu: 200m
             memory: 256Mi
           limits:
             cpu: 2000m
-            memory: 2Gi
+            memory: 4Gi
       serviceAccountName: prometheus-server
       volumes:
       - name: data

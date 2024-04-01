@@ -1,5 +1,4 @@
 apiVersion: kubeadm.k8s.io/v1beta3
-kind: InitConfiguration
 bootstrapTokens:
 - groups:
   - system:bootstrappers:kubeadm:default-node-token
@@ -8,8 +7,9 @@ bootstrapTokens:
   usages:
   - signing
   - authentication
+kind: InitConfiguration
 localAPIEndpoint:
-  advertiseAddress: 192.168.75.6
+  advertiseAddress: 192.168.125.4
   bindPort: 6443
 nodeRegistration:
   criSocket: unix:///var/run/containerd/containerd.sock
@@ -21,18 +21,21 @@ apiVersion: kubeadm.k8s.io/v1beta3
 kind: ClusterConfiguration
 clusterName: kubernetes
 certificatesDir: /etc/kubernetes/pki
-imageRepository: registry.aliyuncs.com/google_containers
-kubernetesVersion: 1.26.0
+kubernetesVersion: 1.28.0
+controlPlaneEndpoint: "192.168.125.4:6443"
 networking:
   dnsDomain: cluster.local
   podSubnet: 172.18.0.0/16
   serviceSubnet: 172.19.0.0/16
 apiServer:
   certSANs:
-  - "192.168.75.6"
-  - "192.168.75.7"
-  - "192.168.75.8"
-  - "192.168.75.9"
+  - "192.168.124.4"
+  - "192.168.125.4"
+  - "192.168.125.5"
+  - "192.168.125.6"
+  - "192.168.125.7"
+  - "192.168.125.8"
+  - "192.168.125.9"
   extraArgs:
     authorization-mode: "Node,RBAC"
   timeoutForControlPlane: 4m0s
@@ -48,3 +51,7 @@ controllerManager:
 scheduler: 
   extraArgs:
     bind-address: "0.0.0.0"
+---
+apiVersion: kubeproxy.config.k8s.io/v1alpha1
+kind: KubeProxyConfiguration
+metricsBindAddress: 0.0.0.0:10249

@@ -1,0 +1,133 @@
+deployment:
+  replicas: 2
+  historyLimit: 4
+  strategy: 
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: "100%"
+      maxUnavailable: 0
+  image:
+    repository: registry.cn-shanghai.aliyuncs.com/eudore/
+    name: '' # if name is empty, set name is 'printf %s-%s:%s .Release.Name image.branch image.tag'
+    branch: master
+    tag: latest
+    policy: IfNotPresent
+    secrets: 
+    - name: registry-aliyun
+  env:
+    APP_BUILDAT: 2023年3月31日
+    APP_COMMITID: 2706c6cbff9a59511ef74b44701b5e402c8b93e2
+    TZ: Asia/Shanghai
+  customPod:
+    restartPolicy: Always
+    enableServiceLinks: false
+    automountServiceAccountToken: false
+
+service:
+  ports:
+  - port: 80
+
+ingress:
+  class: nginx
+  annotationsprefix: nginx.ingress
+  debug: true
+  domain: ${name}.local.eudore.cn
+  tls: tls-eudore.cn
+  annotations:
+    nginx.ingress/hsts: 'false'
+    nginx.ingress/hsts-max-age: "600" 
+    nginx.ingress/ssl-redirect: 'false'
+    prometheus.io/probe: 'true'
+    prometheus.io/path: '/healthy'
+
+hpa:
+  min: 2
+  max: 8
+  up:
+    values: [4 15, 50% 15]
+  down:
+    window: 300
+
+rules:
+- type: golang
+  hooks: ["timezone"]
+  deployment:
+    replicas: 4
+    config: /app/config # if has ConfigMap .Release.Name, mount configmap to config path
+    podannotations:
+      prometheus.io/scrape: 'true'
+      prometheus.io/port: '8080'
+      prometheus.io/path: '/metrics'
+    env:
+      ENV_ServicePort: "8080"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        cpu: 2
+        memory: 512Mi
+    probe:
+      httpGet:
+        port: http
+        path: /healthy
+      initialDelaySeconds: 3
+      periodSeconds: 10
+      timeoutSeconds: 1
+      successThreshold: 1
+      failureThreshold: 3
+    livenessProbe:
+    readinessProbe:
+      failureThreshold: 12
+    startupProbe:
+      periodSeconds: 5
+      failureThreshold: 24
+  service:
+    ports:
+    - port: 8080
+      name: http
+    annotations:
+      prometheus.io/probe: 'true'
+      prometheus.io/http-path: '/healthy'
+  hpa:
+    metrics: 
+    - name: cpu
+      value: 40%
+    - name: eudore_server_qps
+      value: "100"
+  pdb:
+    min: 50%
+    policy: AlwaysAllow
+- type: nginx
+  deployment:
+    resources:
+      limits: 
+        cpu: 10m
+        memory: 32Mi
+    customPod:
+      terminationGracePeriodSeconds: 5
+  ingress:
+    annotations:
+      nginx.ingress/configuration-snippet: |
+        more_set_headers 'Cache-Control: no-cache';
+  hpa:
+    metrics:
+    - name: ingress_qps
+      value: avg 100
+      object:
+        kind: Ingress
+- type: java
+  deployment:
+    podannotations:
+      prometheus.io/scrape: 'true'
+      prometheus.io/port: '8090'
+      prometheus.io/path: '/actuator/prometheus'
+    env:
+      SPRING_PROFILES_ACTIVE: prod
+    resources:
+      requests:
+        cpu: 200m
+      limits:
+        cpu: 2
+      limits: 
+        memory: 1Gi

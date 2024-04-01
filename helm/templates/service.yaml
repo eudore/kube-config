@@ -1,0 +1,24 @@
+{{- $_ := include "init" . }}
+{{- $service := .Values.data.service }}
+{{- if $service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "selectorLabels" . | nindent 4 }}
+    {{- with $service.labels }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:  
+  type: {{ $service.servicetype }}
+  selector:
+    {{- include "selectorLabels" . | nindent 4 }}
+  ports:
+  {{- toYaml $service.ports | nindent 2 }}
+{{- end }}

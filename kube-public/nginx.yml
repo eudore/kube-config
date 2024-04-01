@@ -38,7 +38,7 @@ spec:
     spec:
       containers:
       - name: eudore-endpoint
-        image: nginx:1.22-alpine
+        image: docker.io/library/nginx:1.22-alpine
         ports:
         - containerPort: 80
         volumeMounts:

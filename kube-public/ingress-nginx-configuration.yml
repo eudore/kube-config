@@ -47,32 +47,74 @@ data:
   worker-cpu-affinity: auto
 ---
 apiVersion: v1
-kind: ServiceAccount
+kind: Service
 metadata:
   labels:
     k8s-app: ingress-nginx
+  name: ingress-nginx-controller
+  namespace: kube-public
+  annotations:
+    prometheus.io/component: "true"
+    prometheus.io/port: "10254"
+    prometheus.io/probe: "true"
+    prometheus.io/http-path: "/healthz"
+spec:
+  ports:
+  - appProtocol: http
+    name: http
+    port: 80
+    protocol: TCP
+    targetPort: http
+  - appProtocol: https
+    name: https
+    port: 443
+    protocol: TCP
+    targetPort: https
+  selector:
+    k8s-app: ingress-nginx
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    k8s-app: ingress-nginx
+  name: ingress-nginx-controller-admission
+  namespace: kube-public
+spec:
+  ports:
+  - appProtocol: https
+    name: https-webhook
+    port: 443
+    targetPort: webhook
+  selector:
+    k8s-app: ingress-nginx
+  type: ClusterIP
+---
+apiVersion: v1
+automountServiceAccountToken: true
+kind: ServiceAccount
+metadata:
   name: ingress-nginx
   namespace: kube-public
-automountServiceAccountToken: true
+  labels:
+    k8s-app: ingress-nginx
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: ingress-nginx-admission
-  namespace: kube-public
-  annotations:
-    helm.sh/hook: pre-install,pre-upgrade,post-install,post-upgrade
-    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
   labels:
     k8s-app: ingress-nginx-admission
+  name: ingress-nginx-admission
+  namespace: kube-public
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  labels:
-    k8s-app: ingress-nginx
   name: ingress-nginx
   namespace: kube-public
+  labels:
+    k8s-app: ingress-nginx
 rules:
 - apiGroups:
   - ""
@@ -124,7 +166,7 @@ rules:
 - apiGroups:
   - coordination.k8s.io
   resourceNames:
-  - ingress-controller-leader
+  - ingress-nginx-leader
   resources:
   - leases
   verbs:
@@ -156,7 +198,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   labels:
-    k8s-app: ingress-nginx-admission-webhook
+    k8s-app: ingress-nginx-admission
   name: ingress-nginx-admission
   namespace: kube-public
 rules:
@@ -172,7 +214,10 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    k8s-app: ingress-nginx
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.9.0
   name: ingress-nginx
 rules:
 - apiGroups:
@@ -250,7 +295,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    k8s-app: ingress-nginx-admission-webhook
+    k8s-app: ingress-nginx-admission
   name: ingress-nginx-admission
 rules:
 - apiGroups:
@@ -264,10 +309,10 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  labels:
-    k8s-app: ingress-nginx
   name: ingress-nginx
   namespace: kube-public
+  labels:
+    k8s-app: ingress-nginx
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -281,7 +326,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   labels:
-    k8s-app: ingress-nginx-admission-webhook
+    k8s-app: ingress-nginx-admission
   name: ingress-nginx-admission
   namespace: kube-public
 roleRef:
@@ -297,7 +342,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   labels:
-    k8s-app: ingress-nginx
+    k8s-app: ingress-nginx-admission
   name: ingress-nginx
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -312,7 +357,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   labels:
-    k8s-app: ingress-nginx-admission-webhook
+    k8s-app: ingress-nginx-admission
   name: ingress-nginx-admission
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -327,14 +372,14 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   labels:
-    k8s-app: ingress-nginx-admission-webhook
+    k8s-app: ingress-nginx-admission
   name: ingress-nginx-admission-create
   namespace: kube-public
 spec:
   template:
     metadata:
       labels:
-        k8s-app: ingress-nginx-admission-webhook
+        k8s-app: ingress-nginx-admission
       name: ingress-nginx-admission-create
     spec:
       containers:
@@ -348,7 +393,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        image: registry.k8s.io/ingress-nginx/kube-webhook-certgen:v20230312-helm-chart-4.5.2-28-g66a760794
+        image: registry.k8s.io/ingress-nginx/kube-webhook-certgen:v20230407@sha256:543c40fd093964bc9ab509d3e791f9989963021f1e9e4c9c7b6700b02bfb227b
         imagePullPolicy: IfNotPresent
         name: create
         securityContext:
@@ -366,14 +411,14 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   labels:
-    k8s-app: ingress-nginx-admission-webhook
+    k8s-app: ingress-nginx-admission
   name: ingress-nginx-admission-patch
   namespace: kube-public
 spec:
   template:
     metadata:
       labels:
-        k8s-app: ingress-nginx-admission-webhook
+        k8s-app: ingress-nginx-admission
       name: ingress-nginx-admission-patch
     spec:
       containers:
@@ -389,7 +434,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        image: registry.k8s.io/ingress-nginx/kube-webhook-certgen:v20230312-helm-chart-4.5.2-28-g66a760794
+        image: registry.k8s.io/ingress-nginx/kube-webhook-certgen:v20230407@sha256:543c40fd093964bc9ab509d3e791f9989963021f1e9e4c9c7b6700b02bfb227b
         imagePullPolicy: IfNotPresent
         name: patch
         securityContext:
@@ -407,7 +452,7 @@ apiVersion: networking.k8s.io/v1
 kind: IngressClass
 metadata:
   labels:
-    k8s-app: ingress-nginx-admission-webhook
+    k8s-app: ingress-nginx
   name: nginx
 spec:
   controller: k8s.io/ingress-nginx
@@ -416,7 +461,7 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   labels:
-    k8s-app: ingress-nginx-admission-webhook
+    k8s-app: ingress-nginx-admission
   name: ingress-nginx-admission
 webhooks:
 - admissionReviewVersions:
@@ -426,9 +471,10 @@ webhooks:
       name: ingress-nginx-controller-admission
       namespace: kube-public
       path: /networking/v1/ingresses
+      port: 443
   failurePolicy: Fail
   matchPolicy: Equivalent
-  name: validate.nginx.ingress.kubernetes.io
+  name: validate.nginx.ingress
   rules:
   - apiGroups:
     - networking.k8s.io
@@ -439,4 +485,6 @@ webhooks:
     - UPDATE
     resources:
     - ingresses
+    scope: '*'
   sideEffects: None
+  timeoutSeconds: 3

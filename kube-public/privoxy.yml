@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: privoxy
+  namespace: kube-public
+  labels:
+    app: privoxy
+data:
+  config: |
+    listen-address 0.0.0.0:8118
+  example: |
+    listen-address 0.0.0.0:8118
+    # disable other or ss
+    forward-socks5 / 192.168.124.3:1080 .
+    # pod and svc network
+    forward 172.18.*.*/ .
+    forward 172.19.*.*/ .
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: privoxy
+  namespace: kube-public
+  labels:
+    k8s-app: privoxy
+spec:
+  selector:
+    matchLabels:
+      k8s-app: privoxy
+  template:
+    metadata:
+      labels:
+        k8s-app: privoxy
+    spec:
+      hostNetwork: true
+      restartPolicy: Always
+      # only master
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - image: docker.io/ajoergensen/privoxy:latest
+        imagePullPolicy: IfNotPresent
+        command:
+        - privoxy
+        args:
+        - "--no-daemon"
+        - "/etc/privoxy/config"
+        name: privoxy
+        ports: 
+        - containerPort: 8118
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /etc/privoxy
+          name: config
+      volumes:
+      - name: config
+        configMap:
+          name: privoxy
